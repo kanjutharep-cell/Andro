@@ -1,2 +1,0 @@
-# Andro
-gagal wkwk
